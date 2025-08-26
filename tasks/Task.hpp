@@ -4,6 +4,7 @@
 #define SONAR_OCULUS_M750D_TASK_TASK_HPP
 
 #include "sonar_oculus_m750d/TaskBase.hpp"
+#include <sonar_oculus_m750d/Oculus/OsClientCtrl.h>
 
 namespace sonar_oculus_m750d{
 
