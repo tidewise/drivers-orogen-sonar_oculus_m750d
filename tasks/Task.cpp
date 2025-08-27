@@ -20,9 +20,9 @@ bool Task::configureHook()
 {
     if (!TaskBase::configureHook())
         return false;
-    m_client = std::make_unique<OsClientCtrl>();
-    m_client->Connect();
     m_config = _configuration.get();
+    m_client = std::make_unique<OsClientCtrl>(m_config.ip_addr, m_config.netmask);
+    m_client->Connect();
     return true;
 }
 bool Task::startHook()

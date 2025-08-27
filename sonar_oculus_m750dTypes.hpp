@@ -2,6 +2,7 @@
 #define sonar_oculus_m750d_TYPES_HPP
 
 #include <cstdint>
+#include <string>
 
 namespace sonar_oculus_m750d {
     enum Mode {
@@ -24,6 +25,8 @@ namespace sonar_oculus_m750d {
         bool gain_assist;
         uint8_t gamma;
         uint8_t net_speed_limit;
+        std::string ip_addr;
+        std::string netmask;
     };
     
 }
