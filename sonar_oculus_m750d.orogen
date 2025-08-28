@@ -12,8 +12,8 @@ task_context "Task" do
     # The sonar configuration
     property "configuration", "sonar_oculus_m750d/Configuration"
 
-    # The sonar image
-    output_port "out_frame", ro_ptr("base/samples/frame/Frame")
+    # The sonar data
+    output_port "sonar", "base/samples/Sonar"
 
     periodic 0.1
 end
