@@ -12,6 +12,9 @@ task_context "Task" do
     # The sonar configuration
     property "configuration", "sonar_oculus_m750d/Configuration"
 
+    # The timeout to receive a payload message
+    property "timeout", "base/Time"
+
     # The sonar data
     output_port "sonar", "base/samples/Sonar"
 

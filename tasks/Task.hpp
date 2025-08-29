@@ -109,6 +109,8 @@ argument.
     private:
         std::unique_ptr<OsClientCtrl> m_client;
         Configuration m_config;
+        void fireSonar();
+        base::Time m_timeout;
     };
 }
 
