@@ -111,6 +111,7 @@ argument.
         Configuration m_config;
         void fireSonar();
         base::Time m_timeout;
+        base::Time m_deadline;
     };
 }
 

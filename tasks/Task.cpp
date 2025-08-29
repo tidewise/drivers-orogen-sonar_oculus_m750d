@@ -31,37 +31,34 @@ bool Task::configureHook()
     }
     return true;
 }
+
 bool Task::startHook()
 {
     if (!TaskBase::startHook())
         return false;
     fireSonar();
+    m_deadline = base::Time::now() + m_timeout;
     return true;
 }
 
 void Task::updateHook()
 {
     TaskBase::updateHook();
+    base::Time now = base::Time::now();
+    if (now > m_deadline)
+    {
+        exception(TIMEOUT);
+        return;
+    }
     m_client->m_readData.singleRun();
     if (m_client->hasNewImage()) {
         auto sonar_data = m_client->m_readData.m_osBuffer->getSonarData();
-        base::samples::Sonar sonar = fillSonar(base::Time::now(), sonar_data);
+        base::samples::Sonar sonar = fillSonar(now, sonar_data);
         // To keep sonar alive
         fireSonar();
         _sonar.write(sonar);
+        m_deadline = now + m_timeout;
     }
-}
-
-std::vector<float> toBeamFirst(uchar* bin_first, uint16_t beam_count, uint16_t bin_count)
-{
-    std::vector<float> beam_first(beam_count * bin_count);
-    for (uint16_t b = 0; b < beam_count; b++) {
-        for (uint16_t r = 0; r < bin_count; r++) {
-            beam_first[b * bin_count + r] =
-                static_cast<float>(bin_first[r * beam_count + b]);
-        }
-    }
-    return beam_first;
 }
 
 base::samples::Sonar fillSonar(base::Time const& time, SonarData const& sonar_data)
@@ -82,6 +79,18 @@ base::samples::Sonar fillSonar(base::Time const& time, SonarData const& sonar_da
     return sonar;
 }
 
+std::vector<float> toBeamFirst(uchar* bin_first, uint16_t beam_count, uint16_t bin_count)
+{
+    std::vector<float> beam_first(beam_count * bin_count);
+    for (uint16_t b = 0; b < beam_count; b++) {
+        for (uint16_t r = 0; r < bin_count; r++) {
+            beam_first[b * bin_count + r] =
+                static_cast<float>(bin_first[r * beam_count + b]);
+        }
+    }
+    return beam_first;
+}
+
 void Task::fireSonar()
 {
     m_client->Fire(m_config.mode,
@@ -93,14 +102,17 @@ void Task::fireSonar()
         m_config.gamma,
         m_config.net_speed_limit);
 }
+
 void Task::errorHook()
 {
     TaskBase::errorHook();
 }
+
 void Task::stopHook()
 {
     TaskBase::stopHook();
 }
+
 void Task::cleanupHook()
 {
     TaskBase::cleanupHook();

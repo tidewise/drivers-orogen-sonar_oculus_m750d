@@ -18,6 +18,8 @@ task_context "Task" do
     # The sonar data
     output_port "sonar", "base/samples/Sonar"
 
+    exception_states "TIMEOUT"
+
     periodic 0.1
 end
 
