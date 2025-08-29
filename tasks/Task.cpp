@@ -6,6 +6,9 @@
 using namespace sonar_oculus_m750d;
 using namespace base::samples;
 
+std::vector<float> toBeamFirst(uchar* bin_first, uint16_t beam_count, uint16_t bin_count);
+base::samples::Sonar fillSonar(base::Time const& time, SonarData const& sonar_data);
+
 Task::Task(std::string const& name)
     : TaskBase(name)
 {
@@ -23,14 +26,30 @@ bool Task::configureHook()
     m_timeout = _timeout.get();
     m_client = std::make_unique<OsClientCtrl>(m_config.ip_addr, m_config.netmask);
     m_client->Connect();
+    if (!m_client->m_readData.socketConnect()) {
+        throw std::runtime_error("Socket connection failed");
+    }
     return true;
 }
 bool Task::startHook()
 {
     if (!TaskBase::startHook())
         return false;
-    m_client->m_readData.socketConnect();
+    fireSonar();
     return true;
+}
+
+void Task::updateHook()
+{
+    TaskBase::updateHook();
+    m_client->m_readData.singleRun();
+    if (m_client->hasNewImage()) {
+        auto sonar_data = m_client->m_readData.m_osBuffer->getSonarData();
+        base::samples::Sonar sonar = fillSonar(base::Time::now(), sonar_data);
+        // To keep sonar alive
+        fireSonar();
+        _sonar.write(sonar);
+    }
 }
 
 std::vector<float> toBeamFirst(uchar* bin_first, uint16_t beam_count, uint16_t bin_count)
@@ -47,10 +66,13 @@ std::vector<float> toBeamFirst(uchar* bin_first, uint16_t beam_count, uint16_t b
 
 base::samples::Sonar fillSonar(base::Time const& time, SonarData const& sonar_data)
 {
+    auto bin_duration_seconds =
+        (sonar_data.range) / (sonar_data.bin_count * sonar_data.speed_of_sound);
+    base::Time bin_duration = base::Time::fromSeconds(bin_duration_seconds);
     base::samples::Sonar sonar(time,
-        base::Time::fromSeconds(0),
+        bin_duration,
         sonar_data.bin_count,
-        base::Angle::fromDeg(20),
+        base::Angle::fromDeg(130),
         base::Angle::fromDeg(20),
         sonar_data.beam_count,
         false);
@@ -58,18 +80,6 @@ base::samples::Sonar fillSonar(base::Time const& time, SonarData const& sonar_da
         toBeamFirst(sonar_data.data, sonar_data.beam_count, sonar_data.bin_count);
     sonar.setBeamBins(0, beam_first);
     return sonar;
-}
-
-void Task::updateHook()
-{
-    TaskBase::updateHook();
-    fireSonar();
-    m_client->m_readData.singleRun();
-    if (m_client->hasNewImage()) {
-        auto sonar_data = m_client->m_readData.m_osBuffer->getSonarData();
-        base::samples::Sonar sonar = fillSonar(base::Time::now(), sonar_data);
-        _sonar.write(sonar);
-    }
 }
 
 void Task::fireSonar()
