@@ -31,6 +31,8 @@ bool sonar_oculus_m750d::Task::configureHook()
     }
     guard.commit();
     m_fire_config = _fire_configuration.get();
+    m_driver = move(driver);
+
     return true;
 }
 
@@ -38,9 +40,7 @@ bool sonar_oculus_m750d::Task::startHook()
 {
     if (!TaskBase::startHook())
         return false;
-    sonar_oculus_m750d::Driver* driver =
-        static_cast<sonar_oculus_m750d::Driver*>(mDriver);
-    driver->fireSonar(m_fire_config);
+    m_driver->fireSonar(m_fire_config);
     return true;
 }
 
@@ -66,11 +66,10 @@ void sonar_oculus_m750d::Task::cleanupHook()
 
 void sonar_oculus_m750d::Task::processIO()
 {
-    sonar_oculus_m750d::Driver* driver =
-        static_cast<sonar_oculus_m750d::Driver*>(mDriver);
-    auto sonar = driver->processOne();
+    auto sonar = m_driver->processOne();
+
     if (sonar) {
         _sonar.write(*sonar);
+        m_driver->fireSonar(m_fire_config);
     }
-    driver->fireSonar(m_fire_config);
 }
