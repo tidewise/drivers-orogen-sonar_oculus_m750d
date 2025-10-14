@@ -21,7 +21,7 @@ bool sonar_oculus_m750d::Task::configureHook()
     auto beam_width = _beam_width.get();
     auto beam_height = _beam_height.get();
     std::unique_ptr<sonar_oculus_m750d::Driver> driver(
-        new sonar_oculus_m750d::Driver(beam_width, beam_height));
+        new sonar_oculus_m750d::Driver(beam_width, beam_height, _major_change.get()));
     iodrivers_base::ConfigureGuard guard(this);
     if (!_io_port.get().empty())
         driver->openURI(_io_port.get());
