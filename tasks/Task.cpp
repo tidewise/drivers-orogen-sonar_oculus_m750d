@@ -5,18 +5,17 @@
 #include <sonar_oculus_m750d/Driver.hpp>
 
 using namespace sonar_oculus_m750d;
-using namespace iodrivers_base;
 
-sonar_oculus_m750d::Task::Task(std::string const& name)
+Task::Task(std::string const& name)
     : TaskBase(name)
 {
 }
 
-sonar_oculus_m750d::Task::~Task()
+Task::~Task()
 {
 }
 
-bool sonar_oculus_m750d::Task::configureHook()
+bool Task::configureHook()
 {
     auto beam_width = _beam_width.get();
     auto beam_height = _beam_height.get();
@@ -36,7 +35,7 @@ bool sonar_oculus_m750d::Task::configureHook()
     return true;
 }
 
-bool sonar_oculus_m750d::Task::startHook()
+bool Task::startHook()
 {
     if (!TaskBase::startHook())
         return false;
@@ -44,27 +43,27 @@ bool sonar_oculus_m750d::Task::startHook()
     return true;
 }
 
-void sonar_oculus_m750d::Task::updateHook()
+void Task::updateHook()
 {
     TaskBase::updateHook();
 }
 
-void sonar_oculus_m750d::Task::errorHook()
+void Task::errorHook()
 {
     TaskBase::errorHook();
 }
 
-void sonar_oculus_m750d::Task::stopHook()
+void Task::stopHook()
 {
     TaskBase::stopHook();
 }
 
-void sonar_oculus_m750d::Task::cleanupHook()
+void Task::cleanupHook()
 {
     TaskBase::cleanupHook();
 }
 
-void sonar_oculus_m750d::Task::processIO()
+void Task::processIO()
 {
     auto sonar = m_driver->processOne();
 
