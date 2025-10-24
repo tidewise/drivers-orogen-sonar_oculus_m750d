@@ -16,13 +16,30 @@ task_context "Task", subclasses: "iodrivers_base::Task" do
 
     property "beam_width", "/base/Angle"
     property "beam_height", "/base/Angle"
+
+    # The minimum pressure input for the sonar start working. Default value is 120_000 Pa.
+    # Set it to NaN for safety disable
+    property "safe_working_pressure", "/base/Pressure"
+
+    # For how long it will wait for a new pressure sample before going to
+    # UNSAFE_WORKING_PRESSURE. Defaults to 300ms
+    property "pressure_data_timeout", "base/Time"
+
     # The sonar parameters in the fire message
     #
     # The fire message calls a sonar reconfiguration and is necessary to keep it alive
     property "fire_configuration", "/sonar_oculus_m750d/M750DConfiguration"
 
+    input_port "pressure", "/base/samples/Pressure"
+
     output_port "sonar", "/base/samples/Sonar"
 
+    # State at which it stops communicating with the sonar hardware and keeps trying to
+    # recover as soon as it reads a safe pressure input. The reason for an error state
+    # instead of an exception is that we want to inform for the rest of the system whether
+    # it should try to use the sonar stream or not
+    error_states :UNSAFE_WORKING_PRESSURE
+
+    port_driven
     fd_driven
 end
-
