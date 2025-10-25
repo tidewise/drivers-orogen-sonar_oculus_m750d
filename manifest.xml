@@ -10,4 +10,5 @@
   <depend package="drivers/sonar_oculus_m750d" />
   <depend package="base/orogen/types" />
   <depend package="drivers/orogen/iodrivers_base" />
+  <test_depend name="tools/syskit" />
 </package>
