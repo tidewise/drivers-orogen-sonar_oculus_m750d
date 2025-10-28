@@ -3,8 +3,13 @@
 #include "Task.hpp"
 #include <iodrivers_base/ConfigureGuard.hpp>
 #include <sonar_oculus_m750d/Driver.hpp>
+#include <chrono>
+#include <thread>
 
 using namespace sonar_oculus_m750d;
+using namespace std;
+using namespace base;
+using namespace chrono_literals;
 
 Task::Task(std::string const& name)
     : TaskBase(name)
@@ -35,7 +40,8 @@ bool Task::configureHook()
     m_driver = move(driver);
 
     m_safe_working_pressure = _safe_working_pressure.get();
-    m_pressure_data_timeout_period = _pressure_data_timeout.get();
+    m_pressure_data_timeout = Timeout(_pressure_data_timeout.get());
+    m_recover_minimum_time = Timeout(Time::fromSeconds(3));
     return true;
 }
 
@@ -44,43 +50,79 @@ bool Task::startHook()
     if (!TaskBase::startHook())
         return false;
 
-    m_safe_to_work = base::isNaN(m_safe_working_pressure.toPa());
-    m_pressure_data_timeout = base::Timeout(m_pressure_data_timeout_period);
+    m_pressure_data_timeout.restart();
+    m_init_unsafe_working_pressure = false;
+    while (!safeToWork()) {
+        if (m_pressure_data_timeout.elapsed()) {
+            // RTT does not let us transition from startHook to a runtime error
+            // state directly. This flag is used to pass the information
+            // to updateHook
+            m_init_unsafe_working_pressure = true;
+            return true;
+        }
 
-    safeFireSonar();
+        this_thread::sleep_for(100ms);
+    }
 
+    fireSonar();
     return true;
 }
 
-void Task::safeFireSonar()
-{
-    if (!m_safe_to_work) {
-        return;
-    }
+void Task::fireSonar() {
+    m_recover_minimum_time.restart();
     m_driver->fireSonar(m_fire_config);
 }
 
 void Task::updateHook()
 {
-    TaskBase::updateHook();
-
-    if (base::isNaN(m_safe_working_pressure.toPa())) {
-        return;
-    }
-
-    if(!m_safe_to_work && safeToWork()) { // unsafe -> safe transition
-        m_safe_to_work = true;
-        safeFireSonar();
-    }
-
-    m_safe_to_work = safeToWork();
-    if (!m_safe_to_work) {
+    // RTT does not let us transition from startHook to a runtime error state
+    // directly. This flag is used to pass the information
+    if (m_init_unsafe_working_pressure) {
+        m_init_unsafe_working_pressure = false;
         return error(UNSAFE_WORKING_PRESSURE);
+    }
+
+    // Call updateHook after the check for m_init_unsafe_working_pressure to not
+    // call processIO
+    TaskBase::updateHook();
+}
+
+void Task::processIO()
+{
+    auto sonar = m_driver->processOne();
+    if (sonar) {
+        _sonar.write(*sonar);
+
+        if (!safeToWork()) {
+            return error(UNSAFE_WORKING_PRESSURE);
+        }
+        fireSonar();
+    }
+}
+
+void Task::errorHook()
+{
+    TaskBase::errorHook();
+
+    // Make sure we ignore any pending I/O or the FD activity will call us
+    // in an inifinite loop
+    m_driver->clear();
+
+    // The sonar does not support receiving a fire command while one is already
+    // in flight. The recover_minimum_time here is meant to make sure we do not
+    // have any in flight anymore.
+    if (safeToWork() && m_recover_minimum_time.elapsed()) {
+        fireSonar();
+        recover();
     }
 }
 
 bool Task::safeToWork()
 {
+    if (base::isUnset(m_safe_working_pressure.toPa())) {
+        return true;
+    }
+
     base::samples::Pressure pressure;
     auto flow = _pressure.read(pressure);
     if (flow == RTT::NoData ||
@@ -95,21 +137,6 @@ bool Task::safeToWork()
     return pressure.toPa() > m_safe_working_pressure.toPa();
 }
 
-void Task::error(States error_state)
-{
-    if (state() != error_state) {
-        TaskBase::error(error_state);
-    }
-}
-
-void Task::errorHook()
-{
-    TaskBase::errorHook();
-    if (state() == UNSAFE_WORKING_PRESSURE && safeToWork()) {
-        recover();
-    }
-}
-
 void Task::stopHook()
 {
     TaskBase::stopHook();
@@ -118,13 +145,4 @@ void Task::stopHook()
 void Task::cleanupHook()
 {
     TaskBase::cleanupHook();
-}
-
-void Task::processIO()
-{
-    auto sonar = m_driver->processOne();
-    if (sonar) {
-        _sonar.write(*sonar);
-        safeFireSonar();
-    }
 }
