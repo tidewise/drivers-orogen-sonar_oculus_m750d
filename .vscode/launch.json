@@ -1,0 +1,11 @@
+{
+    "version": "0.2.0",
+    "configurations": [{
+        "type": "orogen",
+        "request": "launch",
+        "name": "orogen - sonar_oculus_m750d::Task",
+        "deploy": "sonar_oculus_m750d::Task",
+        "deployAs": "test"
+    }],
+    "compounds": []
+}

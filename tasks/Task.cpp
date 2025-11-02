@@ -51,20 +51,29 @@ bool Task::startHook()
         return false;
 
     m_pressure_data_timeout.restart();
-    m_init_unsafe_working_pressure = false;
-    while (!safeToWork()) {
-        if (m_pressure_data_timeout.elapsed()) {
-            // RTT does not let us transition from startHook to a runtime error
-            // state directly. This flag is used to pass the information
-            // to updateHook
-            m_init_unsafe_working_pressure = true;
-            return true;
-        }
 
-        this_thread::sleep_for(100ms);
+    if (base::isUnset(m_safe_working_pressure.toPa())) {
+        fireSonar();
+        return true;
     }
 
-    fireSonar();
+    while (!m_pressure_data_timeout.elapsed()) {
+        base::samples::Pressure pressure;
+        auto flow = _pressure.read(pressure);
+        if (flow != RTT::NewData) {
+            continue;
+        }
+
+        m_pressure_data_timeout.restart();
+        bool safe = safeToWork();
+        m_init_unsafe_working_pressure = !safe;
+
+        if (safe) {
+            fireSonar();
+        }
+        return true;
+    }
+    m_init_unsafe_working_pressure = true;
     return true;
 }
 
@@ -82,20 +91,25 @@ void Task::updateHook()
         return error(UNSAFE_WORKING_PRESSURE);
     }
 
-    // Call updateHook after the check for m_init_unsafe_working_pressure to not
-    // call processIO
+    if (!safeToWork()) {
+        return error(UNSAFE_WORKING_PRESSURE);
+    }
+
+    // Call updateHook after the pressure safety checks to make sure it is already done
+    // in processIO
     TaskBase::updateHook();
 }
 
 void Task::processIO()
 {
     auto sonar = m_driver->processOne();
-    if (sonar) {
-        _sonar.write(*sonar);
+    if (!sonar) {
+        return;
+    }
 
-        if (!safeToWork()) {
-            return error(UNSAFE_WORKING_PRESSURE);
-        }
+    _sonar.write(*sonar);
+
+    if (state() != UNSAFE_WORKING_PRESSURE) {
         fireSonar();
     }
 }
@@ -103,10 +117,6 @@ void Task::processIO()
 void Task::errorHook()
 {
     TaskBase::errorHook();
-
-    // Make sure we ignore any pending I/O or the FD activity will call us
-    // in an inifinite loop
-    m_driver->clear();
 
     // The sonar does not support receiving a fire command while one is already
     // in flight. The recover_minimum_time here is meant to make sure we do not
