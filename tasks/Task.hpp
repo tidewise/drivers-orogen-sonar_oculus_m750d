@@ -14,6 +14,7 @@ namespace sonar_oculus_m750d {
     protected:
         std::unique_ptr<sonar_oculus_m750d::Driver> m_driver;
         M750DConfiguration m_fire_config;
+        UpdateRate m_update_rate;
 
         base::Pressure m_safe_working_pressure;
         base::Timeout m_pressure_data_timeout;
@@ -26,7 +27,8 @@ namespace sonar_oculus_m750d {
         // checks for working safety based on pressure input and set m_safe_to_work state
         // accordingly
         bool safeToWork();
-        void fireSonar();
+        void startSonar();
+        void stopSonar();
 
     public:
         Task(std::string const& name = "sonar_oculus_m750d::Task");

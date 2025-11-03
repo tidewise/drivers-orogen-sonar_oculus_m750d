@@ -8,6 +8,7 @@ using_task_library "iodrivers_base"
 import_types_from "sonar_oculus_m750dTypes.hpp"
 import_types_from "iodrivers_base"
 import_types_from "sonar_oculus_m750d/M750DConfiguration.hpp"
+import_types_from "sonar_oculus_m750d/UpdateRate.hpp"
 import_types_from "std"
 import_types_from "base"
 
@@ -16,6 +17,9 @@ task_context "Task", subclasses: "iodrivers_base::Task" do
 
     property "beam_width", "/base/Angle"
     property "beam_height", "/base/Angle"
+
+    # The sonar ping rate
+    property "update_rate", "/sonar_oculus_m750d/UpdateRate"
 
     # The minimum pressure input for the sonar start working. Default value is 120_000 Pa.
     # Set it to NaN for safety disable

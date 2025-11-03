@@ -1,9 +1,9 @@
 /* Generated from orogen/lib/orogen/templates/tasks/Task.cpp */
 
 #include "Task.hpp"
+#include <chrono>
 #include <iodrivers_base/ConfigureGuard.hpp>
 #include <sonar_oculus_m750d/Driver.hpp>
-#include <chrono>
 #include <thread>
 
 using namespace sonar_oculus_m750d;
@@ -26,6 +26,7 @@ bool Task::configureHook()
 {
     auto beam_width = _beam_width.get();
     auto beam_height = _beam_height.get();
+    m_update_rate = _update_rate.get();
     std::unique_ptr<sonar_oculus_m750d::Driver> driver(
         new sonar_oculus_m750d::Driver(beam_width, beam_height));
     iodrivers_base::ConfigureGuard guard(this);
@@ -42,6 +43,7 @@ bool Task::configureHook()
     m_safe_working_pressure = _safe_working_pressure.get();
     m_pressure_data_timeout = Timeout(_pressure_data_timeout.get());
     m_recover_minimum_time = Timeout(Time::fromSeconds(3));
+    stopSonar();
     return true;
 }
 
@@ -53,7 +55,7 @@ bool Task::startHook()
     m_pressure_data_timeout.restart();
 
     if (base::isUnset(m_safe_working_pressure.toPa())) {
-        fireSonar();
+        startSonar();
         return true;
     }
 
@@ -69,7 +71,7 @@ bool Task::startHook()
         m_init_unsafe_working_pressure = !safe;
 
         if (safe) {
-            fireSonar();
+            startSonar();
         }
         return true;
     }
@@ -77,9 +79,16 @@ bool Task::startHook()
     return true;
 }
 
-void Task::fireSonar() {
+void Task::startSonar()
+{
     m_recover_minimum_time.restart();
-    m_driver->fireSonar(m_fire_config);
+    m_driver->fireSonar(m_fire_config, m_update_rate);
+}
+
+void Task::stopSonar()
+{
+    m_recover_minimum_time.restart();
+    m_driver->fireSonar(m_fire_config, UPDATE_STANDBY);
 }
 
 void Task::updateHook()
@@ -88,10 +97,12 @@ void Task::updateHook()
     // directly. This flag is used to pass the information
     if (m_init_unsafe_working_pressure) {
         m_init_unsafe_working_pressure = false;
+        stopSonar();
         return error(UNSAFE_WORKING_PRESSURE);
     }
 
     if (!safeToWork()) {
+        stopSonar();
         return error(UNSAFE_WORKING_PRESSURE);
     }
 
@@ -108,10 +119,6 @@ void Task::processIO()
     }
 
     _sonar.write(*sonar);
-
-    if (state() != UNSAFE_WORKING_PRESSURE) {
-        fireSonar();
-    }
 }
 
 void Task::errorHook()
@@ -122,7 +129,7 @@ void Task::errorHook()
     // in flight. The recover_minimum_time here is meant to make sure we do not
     // have any in flight anymore.
     if (safeToWork() && m_recover_minimum_time.elapsed()) {
-        fireSonar();
+        startSonar();
         recover();
     }
 }
@@ -150,6 +157,7 @@ bool Task::safeToWork()
 void Task::stopHook()
 {
     TaskBase::stopHook();
+    stopSonar();
 }
 
 void Task::cleanupHook()
