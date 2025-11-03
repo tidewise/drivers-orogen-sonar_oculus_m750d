@@ -3,8 +3,13 @@
 #include "Task.hpp"
 #include <iodrivers_base/ConfigureGuard.hpp>
 #include <sonar_oculus_m750d/Driver.hpp>
+#include <chrono>
+#include <thread>
 
 using namespace sonar_oculus_m750d;
+using namespace std;
+using namespace base;
+using namespace chrono_literals;
 
 Task::Task(std::string const& name)
     : TaskBase(name)
@@ -35,7 +40,8 @@ bool Task::configureHook()
     m_driver = move(driver);
 
     m_safe_working_pressure = _safe_working_pressure.get();
-    m_pressure_data_timeout_period = _pressure_data_timeout.get();
+    m_pressure_data_timeout = Timeout(_pressure_data_timeout.get());
+    m_recover_minimum_time = Timeout(Time::fromSeconds(3));
     return true;
 }
 
@@ -44,43 +50,89 @@ bool Task::startHook()
     if (!TaskBase::startHook())
         return false;
 
-    m_safe_to_work = base::isNaN(m_safe_working_pressure.toPa());
-    m_pressure_data_timeout = base::Timeout(m_pressure_data_timeout_period);
+    m_pressure_data_timeout.restart();
 
-    safeFireSonar();
+    if (base::isUnset(m_safe_working_pressure.toPa())) {
+        fireSonar();
+        return true;
+    }
 
+    while (!m_pressure_data_timeout.elapsed()) {
+        base::samples::Pressure pressure;
+        auto flow = _pressure.read(pressure);
+        if (flow != RTT::NewData) {
+            continue;
+        }
+
+        m_pressure_data_timeout.restart();
+        bool safe = safeToWork();
+        m_init_unsafe_working_pressure = !safe;
+
+        if (safe) {
+            fireSonar();
+        }
+        return true;
+    }
+    m_init_unsafe_working_pressure = true;
     return true;
 }
 
-void Task::safeFireSonar()
-{
-    if (!m_safe_to_work) {
-        return;
-    }
+void Task::fireSonar() {
+    m_recover_minimum_time.restart();
     m_driver->fireSonar(m_fire_config);
 }
 
 void Task::updateHook()
 {
-    TaskBase::updateHook();
+    // RTT does not let us transition from startHook to a runtime error state
+    // directly. This flag is used to pass the information
+    if (m_init_unsafe_working_pressure) {
+        m_init_unsafe_working_pressure = false;
+        return error(UNSAFE_WORKING_PRESSURE);
+    }
 
-    if (base::isNaN(m_safe_working_pressure.toPa())) {
+    if (!safeToWork()) {
+        return error(UNSAFE_WORKING_PRESSURE);
+    }
+
+    // Call updateHook after the pressure safety checks to make sure it is already done
+    // in processIO
+    TaskBase::updateHook();
+}
+
+void Task::processIO()
+{
+    auto sonar = m_driver->processOne();
+    if (!sonar) {
         return;
     }
 
-    if(!m_safe_to_work && safeToWork()) { // unsafe -> safe transition
-        m_safe_to_work = true;
-        safeFireSonar();
-    }
+    _sonar.write(*sonar);
 
-    m_safe_to_work = safeToWork();
-    if (!m_safe_to_work) {
-        return error(UNSAFE_WORKING_PRESSURE);
+    if (state() != UNSAFE_WORKING_PRESSURE) {
+        fireSonar();
+    }
+}
+
+void Task::errorHook()
+{
+    TaskBase::errorHook();
+
+    // The sonar does not support receiving a fire command while one is already
+    // in flight. The recover_minimum_time here is meant to make sure we do not
+    // have any in flight anymore.
+    if (safeToWork() && m_recover_minimum_time.elapsed()) {
+        fireSonar();
+        recover();
     }
 }
 
 bool Task::safeToWork()
 {
+    if (base::isUnset(m_safe_working_pressure.toPa())) {
+        return true;
+    }
+
     base::samples::Pressure pressure;
     auto flow = _pressure.read(pressure);
     if (flow == RTT::NoData ||
@@ -95,21 +147,6 @@ bool Task::safeToWork()
     return pressure.toPa() > m_safe_working_pressure.toPa();
 }
 
-void Task::error(States error_state)
-{
-    if (state() != error_state) {
-        TaskBase::error(error_state);
-    }
-}
-
-void Task::errorHook()
-{
-    TaskBase::errorHook();
-    if (state() == UNSAFE_WORKING_PRESSURE && safeToWork()) {
-        recover();
-    }
-}
-
 void Task::stopHook()
 {
     TaskBase::stopHook();
@@ -118,13 +155,4 @@ void Task::stopHook()
 void Task::cleanupHook()
 {
     TaskBase::cleanupHook();
-}
-
-void Task::processIO()
-{
-    auto sonar = m_driver->processOne();
-    if (sonar) {
-        _sonar.write(*sonar);
-        safeFireSonar();
-    }
 }
