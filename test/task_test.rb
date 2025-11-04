@@ -23,6 +23,7 @@ describe OroGen.sonar_oculus_m750d.Task do
         @pressure_w = syskit_create_writer @task.pressure_port
 
         @task.properties.pressure_data_timeout = { microseconds: 1_000_000 }
+        @task.properties.update_rate = :UPDATE_15HZ_MAX
     end
 
     describe "start behaviour" do
@@ -34,7 +35,9 @@ describe OroGen.sonar_oculus_m750d.Task do
                 .to do
                     emit task.start_event
                     not_emit task.unsafe_working_pressure_event, within: 2
-                    have_one_new_sample from_driver
+                    have_one_new_sample(from_driver).matching do |s|
+                        s.data[17] == 1
+                    end
                 end
 
             assert_fire_sonar_message(packet)
@@ -44,11 +47,13 @@ describe OroGen.sonar_oculus_m750d.Task do
            "there are no pressure samples" do
             task.properties.safe_working_pressure = { pascal: 100_000 }
             syskit_configure(task)
-            expect_execution { task.start! }
+            packet = expect_execution { task.start! }
                 .to do
                     emit task.unsafe_working_pressure_event
-                    have_no_new_sample from_driver
+                    have_one_new_sample from_driver
                 end
+            assert_fire_sonar_message(packet)
+            assert_equal(5, packet.data[17])
         end
 
         it "goes into unsafe_working_pressure state if the check is enabled and it " \
@@ -56,12 +61,13 @@ describe OroGen.sonar_oculus_m750d.Task do
             task.properties.safe_working_pressure = { pascal: 150_000 }
             syskit_configure(task)
 
-            expect_execution { task.start! }
+            packet = expect_execution { task.start! }
                 .poll { pressure_w.write({ pascal: 100_000 })}
                 .to do
                     emit task.unsafe_working_pressure_event
-                    have_no_new_sample from_driver
+                    have_one_new_sample from_driver
                 end
+            assert_equal(5, packet.data[17])
         end
 
         it "goes into normal state if the check is enabled and it " \
@@ -74,7 +80,9 @@ describe OroGen.sonar_oculus_m750d.Task do
                 .to do
                     emit task.start_event
                     not_emit task.unsafe_working_pressure_event, within: 1
-                    have_one_new_sample from_driver
+                    have_one_new_sample(from_driver).matching do |s|
+                        s.data[17] == 1
+                    end
                 end
 
             assert_fire_sonar_message(packet)
@@ -100,16 +108,23 @@ describe OroGen.sonar_oculus_m750d.Task do
     it "switches from unsafe to safe at runtime" do
         task.properties.safe_working_pressure = { pascal: 150_000 }
         syskit_configure(task)
-        expect_execution { task.start! }
+        packet = expect_execution { task.start! }
             .poll { pressure_w.write({ pascal: 100_000 })}
-            .to_emit task.unsafe_working_pressure_event
+            .to do
+                emit task.unsafe_working_pressure_event
+                have_one_new_sample from_driver
+            end
+        assert_fire_sonar_message(packet)
+        assert_equal(5, packet.data[17])
 
         packet =
             expect_execution
             .poll { pressure_w.write({ pascal: 200_000 })}
             .to do
                 emit task.running_event
-                have_one_new_sample from_driver
+                have_one_new_sample(from_driver).matching do |s|
+                    s.data[17] == 1
+                end
             end
         assert_fire_sonar_message(packet)
     end
