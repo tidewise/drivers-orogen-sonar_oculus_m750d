@@ -16,6 +16,8 @@ Task::Task(std::string const& name)
 {
     _safe_working_pressure.set(base::Pressure::fromPascal(120000));
     _pressure_data_timeout.set(base::Time::fromMilliseconds(300));
+
+    setRuntimeErrorIOProcessingEnabled(true);
 }
 
 Task::~Task()
